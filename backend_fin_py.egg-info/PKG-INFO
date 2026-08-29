@@ -1,0 +1,249 @@
+Metadata-Version: 2.4
+Name: backend-fin-py
+Version: 0.1.0
+Summary: Backend financeiro pessoal - FastAPI + SQLAlchemy 2.x + PostgreSQL
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+Requires-Dist: fastapi>=0.111.0
+Requires-Dist: uvicorn[standard]>=0.30.0
+Requires-Dist: sqlalchemy>=2.0.30
+Requires-Dist: alembic>=1.13.0
+Requires-Dist: asyncpg>=0.29.0
+Requires-Dist: pydantic>=2.8.0
+Requires-Dist: pydantic-settings>=2.3.0
+Requires-Dist: pydantic-extra-types>=2.4.0
+Requires-Dist: python-jose[cryptography]>=3.3.0
+Requires-Dist: passlib[bcrypt]>=1.7.4
+Requires-Dist: pwdlib[argon2]>=0.1.0
+Requires-Dist: email-validator>=2.1.0
+Requires-Dist: python-multipart>=0.0.9
+Requires-Dist: slowapi>=0.1.9
+Requires-Dist: python-dotenv>=1.0.0
+Provides-Extra: dev
+Requires-Dist: pytest>=8.2.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.23.0; extra == "dev"
+Requires-Dist: pytest-cov>=5.0.0; extra == "dev"
+Requires-Dist: httpx>=0.27.0; extra == "dev"
+Requires-Dist: aiosqlite>=0.20.0; extra == "dev"
+Requires-Dist: faker>=25.0.0; extra == "dev"
+Requires-Dist: ruff>=0.5.0; extra == "dev"
+Requires-Dist: mypy>=1.10.0; extra == "dev"
+
+# Backend Financeiro Pessoal
+
+API REST para controle financeiro pessoal (contas, transações, categorias, orçamentos, metas) construída com FastAPI, SQLAlchemy 2.x e PostgreSQL.
+
+## Stack
+
+- **Python 3.12+**
+- **FastAPI** - Framework web assíncrono
+- **SQLAlchemy 2.x** - ORM assíncrono
+- **PostgreSQL** - Banco de dados
+- **Alembic** - Migrations
+- **Pydantic v2** - Validação
+- **JWT (HS256)** - Autenticação (access + refresh token)
+- **argon2** - Hash de senhas
+- **Docker** - Containerização
+
+## Funcionalidades
+
+- 🔐 Autenticação JWT com refresh token e revogação
+- 💳 CRUD de contas (corrente, poupança, carteira, investimento, cartão de crédito)
+- 💰 Transações (receita, despesa, transferência) com idempotência
+- 🔁 Transações recorrentes com geração lazy ("catch-up")
+- 🏷️ Categorias hierárquicas (pai/filho)
+- 📊 Orçamentos mensais por categoria com alerta
+- 🎯 Metas financeiras com aportes/retiradas
+- 📈 Relatórios: resumo mensal, gastos por categoria, evolução de saldo, orçado vs realizado
+- 🩺 Health check para PWA
+- 🐳 Docker + docker-compose para desenvolvimento e produção
+
+## Estrutura do Projeto
+
+```
+backend-fin-py/
+├── alembic/              # Migrations
+├── app/
+│   ├── api/v1/           # Routers (endpoints)
+│   ├── core/             # Config, security, deps, exceptions
+│   ├── db/               # Engine, session, base models
+│   ├── models/           # SQLAlchemy models
+│   ├── repositories/     # Data access layer
+│   ├── schemas/          # Pydantic schemas
+│   └── services/         # Business logic
+├── tests/                # Pytest + httpx
+├── Dockerfile
+├── docker-compose.yml
+├── pyproject.toml
+└── .env.example
+```
+
+## Início Rápido
+
+### Pré-requisitos
+
+- Docker e Docker Compose
+- Python 3.12+ (para desenvolvimento local)
+
+### Com Docker (Recomendado)
+
+```bash
+# 1. Copie o arquivo de ambiente
+cp .env.example .env
+
+# 2. Suba os containers
+docker-compose up -d
+
+# 3. A API estará em http://localhost:8000
+#    Swagger UI: http://localhost:8000/docs
+```
+
+### Desenvolvimento Local
+
+```bash
+# 1. Crie e ative virtualenv
+python -m venv .venv
+source .venv/bin/activate  # Linux/Mac
+# .venv\Scripts\activate   # Windows
+
+# 2. Instale dependências
+pip install -e ".[dev]"
+
+# 3. Configure .env (apontando para PostgreSQL local)
+cp .env.example .env
+# Edite .env com suas credenciais
+
+# 4. Rode migrations
+alembic upgrade head
+
+# 5. Inicie o servidor
+uvicorn app.main:app --reload
+```
+
+## Variáveis de Ambiente
+
+| Variável | Descrição | Padrão |
+|----------|-----------|--------|
+| `APP_ENV` | Ambiente (development/production/test) | development |
+| `APP_HOST` | Host do servidor | 0.0.0.0 |
+| `APP_PORT` | Porta do servidor | 8000 |
+| `POSTGRES_USER` | Usuário do PostgreSQL | finance |
+| `POSTGRES_PASSWORD` | Senha do PostgreSQL | finance |
+| `POSTGRES_DB` | Nome do banco | finance |
+| `POSTGRES_HOST` | Host do PostgreSQL | db (docker) / localhost (local) |
+| `POSTGRES_PORT` | Porta do PostgreSQL | 5432 |
+| `SECRET_KEY` | Chave secreta JWT (mín. 32 chars) | **obrigatório** |
+| `ALGORITHM` | Algoritmo JWT | HS256 |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Expiração access token | 30 |
+| `REFRESH_TOKEN_EXPIRE_DAYS` | Expiração refresh token | 7 |
+| `CORS_ORIGINS` | Origens CORS permitidas | ["http://localhost:3000","http://localhost:5173"] |
+| `RATE_LIMIT_LOGIN` | Rate limit login | 5/minute |
+
+## Migrations (Alembic)
+
+```bash
+# Criar nova migration
+alembic revision --autogenerate -m "descrição"
+
+# Aplicar migrations
+alembic upgrade head
+
+# Voltar uma migration
+alembic downgrade -1
+
+# Ver histórico
+alembic history
+```
+
+## Testes
+
+```bash
+# Rodar todos os testes
+pytest
+
+# Com coverage
+pytest --cov=app --cov-report=term-missing
+
+# Verboso
+pytest -v
+```
+
+## Endpoints Principais
+
+### Autenticação
+- `POST /api/v1/auth/register` - Registro
+- `POST /api/v1/auth/login` - Login (retorna access + refresh)
+- `POST /api/v1/auth/refresh` - Renovar access token
+- `POST /api/v1/auth/logout` - Logout (revoga refresh tokens)
+- `GET /api/v1/auth/me` - Usuário atual
+
+### Contas
+- `POST /api/v1/accounts` - Criar
+- `GET /api/v1/accounts` - Listar (paginado)
+- `GET /api/v1/accounts/{id}` - Detalhar
+- `GET /api/v1/accounts/{id}/balance` - Saldo atual
+- `PATCH /api/v1/accounts/{id}` - Atualizar
+- `DELETE /api/v1/accounts/{id}` - Excluir (soft delete se houver transações)
+
+### Categorias
+- `POST /api/v1/categories` - Criar
+- `GET /api/v1/categories` - Listar
+- `GET /api/v1/categories/tree` - Árvore hierárquica
+- `PATCH /api/v1/categories/{id}` - Atualizar
+- `DELETE /api/v1/categories/{id}` - Excluir (soft delete se referenciada)
+
+### Transações
+- `POST /api/v1/transactions` - Criar (header `Idempotency-Key` opcional)
+- `GET /api/v1/transactions` - Listar com filtros (conta, categoria, tipo, status, data, descrição)
+- `GET /api/v1/transactions/{id}` - Detalhar
+- `PATCH /api/v1/transactions/{id}` - Atualizar
+- `DELETE /api/v1/transactions/{id}` - Excluir
+- `POST /api/v1/transactions/{id}/confirm` - Confirmar transação pendente
+
+### Recorrências
+- `POST /api/v1/recurrences` - Criar regra
+- `GET /api/v1/recurrences` - Listar regras
+- `POST /api/v1/recurrences/generate` - Gerar todas pendentes até hoje
+- `POST /api/v1/recurrences/{id}/generate` - Gerar de uma regra específica
+
+### Orçamentos
+- `POST /api/v1/budgets` - Criar
+- `GET /api/v1/budgets` - Listar (filtro por mês/ano)
+- `GET /api/v1/budgets/{id}/progress` - Progresso (% gasto, alerta)
+
+### Metas
+- `POST /api/v1/goals` - Criar
+- `GET /api/v1/goals` - Listar
+- `GET /api/v1/goals/{id}/progress` - Progresso (%)
+- `POST /api/v1/goals/{id}/contributions` - Registrar aporte/retirada
+
+### Relatórios
+- `GET /api/v1/reports/monthly-summary?mes=1&ano=2024`
+- `GET /api/v1/reports/category-spending?mes=1&ano=2024`
+- `GET /api/v1/reports/balance-evolution?conta_id=...&mes=1&ano=2024`
+- `GET /api/v1/reports/budget-vs-actual?mes=1&ano=2024`
+
+### Health
+- `GET /health` - Público, sem autenticação
+
+## Idempotência
+
+Todas as rotas de criação de transação aceitam header opcional `Idempotency-Key` (UUID). Se a mesma chave for reenviada, retorna a transação existente (200) em vez de criar duplicata (201).
+
+## HTTPS Local
+
+Para desenvolvimento com HTTPS (necessário para PWA/Service Workers):
+
+```bash
+# Gerar certificado auto-assinado
+openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=localhost"
+
+# Rodar com uvicorn + SSL
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --ssl-keyfile key.pem --ssl-certfile cert.pem --reload
+```
+
+Configure no navegador/celular para confiar no certificado ou use `mkcert` para CA local.
+
+## Licença
+
+Uso pessoal - não comercial.
