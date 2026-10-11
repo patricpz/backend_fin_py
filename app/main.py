@@ -5,24 +5,28 @@ from app.core.config import settings
 from app.core.handlers import register_exception_handlers
 from app.core.rate_limit import register_rate_limiter
 from app.api.v1 import auth, accounts, categories, transactions, recurrences, budgets, goals, reports, health
-from app.db.session import engine
 from app.db.base import Base
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    yield
-    await engine.dispose()
+def _build_lifespan(engine):
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        yield
+        await engine.dispose()
+
+    return lifespan
 
 
-def create_app() -> FastAPI:
+def create_app(engine=None) -> FastAPI:
+    engine = engine or __import__("app.db.session", fromlist=["engine"]).engine
+
     app = FastAPI(
         title="Financeiro Pessoal API",
         description="Backend para controle financeiro pessoal",
         version="0.1.0",
-        lifespan=lifespan,
+        lifespan=_build_lifespan(engine),
     )
 
     app.add_middleware(

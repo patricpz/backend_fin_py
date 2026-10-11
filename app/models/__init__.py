@@ -6,6 +6,7 @@ from app.models.recurrence import RecurringTransaction
 from app.models.budget import Budget
 from app.models.goal import Goal, GoalContribution
 from app.models.refresh_token import RefreshToken
+from app.models.installment import Installment
 
 __all__ = [
     "User",
@@ -17,4 +18,5 @@ __all__ = [
     "Goal",
     "GoalContribution",
     "RefreshToken",
+    "Installment",
 ]

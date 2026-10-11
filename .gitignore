@@ -1,0 +1,77 @@
+# Environment variables / Secrets (CRITICAL)
+.env
+.env.local
+.env.prod
+.env.staging
+.env.*.local
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.venv/
+pyvenv.cfg
+*.egg-info/
+*.egg
+manifest.in
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pytype/
+.coverage
+htmlcov/
+
+# Build / Dist
+build/
+dist/
+*.egg
+*.whl
+
+# UV (keep uv.lock committed for reproducible builds)
+# uv.lock
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+
+.claude
+.freebuff
+claude

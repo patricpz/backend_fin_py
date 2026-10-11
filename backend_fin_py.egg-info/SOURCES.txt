@@ -30,6 +30,7 @@ app/models/budget.py
 app/models/category.py
 app/models/enums.py
 app/models/goal.py
+app/models/installment.py
 app/models/recurrence.py
 app/models/refresh_token.py
 app/models/transaction.py
@@ -50,6 +51,7 @@ app/schemas/budget.py
 app/schemas/category.py
 app/schemas/common.py
 app/schemas/goal.py
+app/schemas/installment.py
 app/schemas/recurrence.py
 app/schemas/report.py
 app/schemas/transaction.py
@@ -67,4 +69,14 @@ backend_fin_py.egg-info/SOURCES.txt
 backend_fin_py.egg-info/dependency_links.txt
 backend_fin_py.egg-info/requires.txt
 backend_fin_py.egg-info/top_level.txt
+tests/test_accounts.py
 tests/test_auth.py
+tests/test_budgets.py
+tests/test_categories.py
+tests/test_goals.py
+tests/test_installment_reports.py
+tests/test_installments.py
+tests/test_isolation.py
+tests/test_recurrences.py
+tests/test_reports.py
+tests/test_transactions.py

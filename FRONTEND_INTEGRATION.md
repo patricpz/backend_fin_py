@@ -497,6 +497,85 @@ Retorna array aninhado (sem paginação):
 
 ---
 
+##### Parcelamento — `POST /transactions/{id}/parcelar`
+
+Cria parcelas para uma transação de **despesa** ou **receita** já existente.
+
+**Request Body:**
+
+```json
+{
+  "numero_parcelas": 3,
+  "data_inicio": "2026-09-10",
+  "valor_por_parcela": "100.00"
+}
+```
+
+| Campo              | Tipo   | Restrições                                              |
+|--------------------|--------|---------------------------------------------------------|
+| numero_parcelas    | int    | 2–24, obrigatório                                       |
+| data_inicio        | date   | Data da primeira parcela (YYYY-MM-DD), obrigatório       |
+| valor_por_parcela  | decimal| Opcional; se omitido, divide o valor total igualmente    |
+
+**Response 200:** `TransactionResponseWithInstallments` — a transação original mais a lista de parcelas criadas.
+
+> **Regra importante:** apenas `tipo = despesa` ou `tipo = receita` podem ser parcelados. Transferências são rejeitadas.
+>
+> **Regras de validação:**
+> - Se a transação já possui parcelas, o backend retorna 400 (`ALREADY_INSTALLMENTED`).
+> - Se `valor_por_parcela * numero_parcelas > valor_total`, o backend retorna 400 (`INSTALLMENT_TOTAL_EXCEEDED`).
+> - A data das parcelas usa um intervalo aproximado de 30 dias entre vencimentos a partir de `data_inicio`.
+
+**Exemplo de ciclo completo:**
+
+```
+1. POST /transactions  -> cria a transação (ex: despesa R$ 300,00)
+2. POST /transactions/{id}/parcelar  -> {"numero_parcelas": 3, "data_inicio": "2026-09-10"}
+3. GET /transactions/{id}/parcelas  -> lista as parcelas geradas
+```
+
+**Listar parcelas — `GET /transactions/{id}/parcelas`**
+
+Retorna a lista de parcelas de uma transação.
+
+**Response 200:** `List<InstallmentResponse>`
+
+```json
+[
+  {
+    "id": "...",
+    "transaction_id": "...",
+    "parcela_numero": 1,
+    "valor": "100.00",
+    "data_vencimento": "2026-09-10",
+    "status": "confirmado",
+    "observacoes": null
+  },
+  {
+    "id": "...",
+    "transaction_id": "...",
+    "parcela_numero": 2,
+    "valor": "100.00",
+    "data_vencimento": "2026-10-10",
+    "status": "confirmado",
+    "observacoes": null
+  },
+  {
+    "id": "...",
+    "transaction_id": "...",
+    "parcela_numero": 3,
+    "valor": "100.00",
+    "data_vencimento": "2026-11-09",
+    "status": "confirmado",
+    "observacoes": null
+  }
+]
+```
+
+> **Nota de integração:** o backend reconhece as parcelas nos relatórios pela **data de vencimento**, não pela data da transação original.
+
+---
+
 ### 4.5 Recorrências
 
 | Método | Rota                                    | Autenticado | Descrição                        |

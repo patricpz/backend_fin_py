@@ -6,6 +6,17 @@ from decimal import Decimal
 from app.models.enums import TransactionType, TransactionStatus
 
 
+class InstallmentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+    id: UUID
+    transaction_id: UUID
+    parcela_numero: int
+    valor: Decimal
+    data_vencimento: date
+    status: str
+    observacoes: str | None
+
+
 class TransactionBase(BaseModel):
     model_config = ConfigDict(extra="forbid")
     conta_id: UUID
@@ -46,6 +57,12 @@ class TransactionResponse(TransactionBase):
     user_id: UUID
     criado_em: datetime
     atualizado_em: datetime
+    installments_total_count: Optional[int] = None
+
+
+class TransactionResponseWithInstallments(TransactionResponse):
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+    installments: List[InstallmentResponse]
 
 
 class TransactionFilters(BaseModel):

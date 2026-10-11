@@ -2,14 +2,14 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from sqlalchemy.pool import NullPool
 from app.core.config import settings
 
-
 _is_test = settings.APP_ENV == "test"
 
+_url = settings.get_database_url()
+
 engine = create_async_engine(
-    settings.get_database_url(),
+    _url,
     echo=settings.APP_ENV == "development",
-    connect_args={"ssl": "require"} if "neon.tech" in settings.get_database_url() else {},
-    poolclass=NullPool if _is_test else None,
+    connect_args={"ssl": "require"} if "neon.tech" in _url else {},
     pool_pre_ping=not _is_test,
     pool_recycle=1800,
 )
@@ -21,7 +21,6 @@ async_session_maker = async_sessionmaker(
     autoflush=False,
 )
 
-
 async def get_db() -> AsyncSession:
     async with async_session_maker() as session:
         try:
@@ -32,3 +31,6 @@ async def get_db() -> AsyncSession:
             raise
         finally:
             await session.close()
+
+def get_database_url() -> str:
+    return _url

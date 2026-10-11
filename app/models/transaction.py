@@ -16,6 +16,7 @@ class Transaction(Base, TimestampMixin):
     categoria_id: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("categories.id", ondelete="SET NULL"), nullable=True)
     tipo: Mapped[TransactionType] = mapped_column(String(20), nullable=False)
     valor: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False)
+    installments_total_count: Mapped[int | None] = mapped_column(nullable=True)
     data: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     descricao: Mapped[str] = mapped_column(String(200), nullable=False)
     observacoes: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -29,6 +30,7 @@ class Transaction(Base, TimestampMixin):
     account_destino = relationship("Account", back_populates="transactions_destino", foreign_keys=[conta_destino_id])
     category = relationship("Category", back_populates="transactions")
     recurrence = relationship("RecurringTransaction", back_populates="generated_transactions")
+    installments = relationship("Installment", back_populates="transaction", cascade="all, delete-orphan")
 
     __table_args__ = (
         CheckConstraint("valor > 0", name="ck_transactions_valor_positive"),

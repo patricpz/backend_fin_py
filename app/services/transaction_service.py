@@ -1,15 +1,19 @@
+from __future__ import annotations
+
 from uuid import UUID
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from app.models.transaction import Transaction
 from app.models.account import Account
 from app.models.category import Category
+from app.models.installment import Installment
 from app.repositories.transaction_repository import TransactionRepository
 from app.repositories.account_repository import AccountRepository
 from app.repositories.category_repository import CategoryRepository
 from app.schemas.transaction import TransactionCreate, TransactionUpdate, TransactionFilters
+from app.schemas.installment import InstallmentCreate
 from app.core.exceptions import NotFoundError, BusinessRuleError
 from app.models.enums import TransactionType, TransactionStatus
 
@@ -120,3 +124,70 @@ class TransactionService:
         await self.db.flush()
         await self.db.refresh(transaction)
         return transaction
+
+    async def parcelar(self, user_id: UUID, transaction_id: UUID, data: InstallmentCreate) -> Transaction:
+        """Cria parcelas para uma transação de despesa ou receita."""
+        transaction = await self.tx_repo.get_by_id_with_installments(transaction_id, user_id)
+        if not transaction:
+            raise NotFoundError("Transação não encontrada", "TRANSACTION_NOT_FOUND")
+
+        # Só despesas e receitas podem ser parceladas
+        if transaction.tipo not in (TransactionType.DESPESA, TransactionType.RECEITA):
+            raise BusinessRuleError(
+                "Apenas despesas e receitas podem ser parceladas",
+                "CANNOT_PARCELIZE_TRANSFER"
+            )
+
+        # Se já tem parcelas, impede nova parcelação
+        if transaction.installments and len(transaction.installments) > 0:
+            raise BusinessRuleError(
+                "Transação já possui parcelas",
+                "ALREADY_INSTALLMENTED"
+            )
+
+        valor_total = Decimal(str(transaction.valor))
+        numero_parcelas = data.numero_parcelas
+
+        # Se valor_por_parcela não informado, divide igualmente
+        if data.valor_por_parcela:
+            valor_por_parcela = data.valor_por_parcela
+            total_parcelas = valor_por_parcela * numero_parcelas
+            if total_parcelas > valor_total:
+                raise BusinessRuleError(
+                    "O valor total das parcelas não pode exceder o valor da transação",
+                    "INSTALLMENT_TOTAL_EXCEEDED"
+                )
+        else:
+            # Divisão inteira; o resto permanece na transação mãe
+            valor_por_parcela = valor_total / numero_parcelas
+
+        data_atual = date.today()
+        data_inicio = data.data_inicio if data.data_inicio >= data_atual else data_atual
+
+        installments = []
+        for i in range(numero_parcelas):
+            vencimento = data_inicio + timedelta(days=30 * i)
+            installment = Installment(
+                transaction_id=transaction_id,
+                parcela_numero=i + 1,
+                valor=float(valor_por_parcela.quantize(Decimal("0.01"))),
+                data_vencimento=vencimento,
+                status=TransactionStatus.CONFIRMADO,
+            )
+            installments.append(installment)
+            self.db.add(installment)
+
+        # Atualiza a transação para refletir o número de parcelas
+        transaction.installments_total_count = numero_parcelas
+        if transaction.status == TransactionStatus.PENDENTE:
+            transaction.status = TransactionStatus.CONFIRMADO
+
+        await self.db.flush()
+        await self.db.refresh(transaction)
+        return transaction
+
+    async def get_installments(self, user_id: UUID, transaction_id: UUID) -> list[Installment]:
+        transaction = await self.tx_repo.get_by_id_with_installments(transaction_id, user_id)
+        if not transaction:
+            raise NotFoundError("Transação não encontrada", "TRANSACTION_NOT_FOUND")
+        return list(transaction.installments) if transaction.installments else []

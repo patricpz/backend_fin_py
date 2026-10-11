@@ -39,22 +39,9 @@ class ReportService:
         else:
             data_fim = date(ano, mes + 1, 1)
 
-        stmt = select(
-            func.coalesce(func.sum(case((Transaction.tipo == TransactionType.RECEITA, Transaction.valor), else_=0)), 0).label("receitas"),
-            func.coalesce(func.sum(case((Transaction.tipo == TransactionType.DESPESA, Transaction.valor), else_=0)), 0).label("despesas"),
-            func.coalesce(func.sum(case((Transaction.tipo == TransactionType.TRANSFERENCIA, Transaction.valor), else_=0)), 0).label("transferencias"),
-        ).where(
-            Transaction.user_id == user_id,
-            Transaction.status == TransactionStatus.CONFIRMADO,
-            Transaction.data >= data_inicio,
-            Transaction.data < data_fim,
+        receitas, despesas, transferencias_enviadas = await self.tx_repo.get_installment_aware_monthly_totals(
+            user_id, data_inicio, data_fim
         )
-        result = await self.db.execute(stmt)
-        row = result.one()
-
-        receitas = Decimal(str(row.receitas))
-        despesas = Decimal(str(row.despesas))
-        transferencias = Decimal(str(row.transferencias))
 
         return MonthlySummary(
             mes=mes,
@@ -62,7 +49,7 @@ class ReportService:
             total_receitas=receitas,
             total_despesas=despesas,
             saldo=receitas - despesas,
-            total_transferencias_enviadas=transferencias,
+            total_transferencias_enviadas=transferencias_enviadas,
             total_transferencias_recebidas=Decimal("0"),
         )
 
@@ -73,36 +60,18 @@ class ReportService:
         else:
             data_fim = date(ano, mes + 1, 1)
 
-        stmt = select(
-            Category.id,
-            Category.nome,
-            Category.cor,
-            Category.icone,
-            func.coalesce(func.sum(Transaction.valor), 0).label("valor"),
-            Transaction.tipo,
-        ).select_from(
-            Transaction.__table__.join(Category, Transaction.categoria_id == Category.id, isouter=True)
-        ).where(
-            Transaction.user_id == user_id,
-            Transaction.status == TransactionStatus.CONFIRMADO,
-            Transaction.tipo == TransactionType.DESPESA,
-            Transaction.data >= data_inicio,
-            Transaction.data < data_fim,
-        ).group_by(Category.id, Category.nome, Category.cor, Category.icone, Transaction.tipo)
+        rows = await self.tx_repo.get_installment_aware_category_spending(user_id, data_inicio, data_fim)
 
-        result = await self.db.execute(stmt)
-        rows = result.all()
-
-        total = sum(Decimal(str(r.valor)) for r in rows)
+        total = sum(r[4] for r in rows)
         categorias = [
             CategorySpending(
-                categoria_id=r.id or UUID(int=0),
-                categoria_nome=r.nome or "Sem categoria",
-                cor=r.cor or "#6366F1",
-                icone=r.icone or "tag",
-                valor=Decimal(str(r.valor)),
-                percentual=float(Decimal(str(r.valor)) / total * 100) if total > 0 else 0,
-                tipo=r.tipo,
+                categoria_id=r[0],
+                categoria_nome=r[1],
+                cor=r[2],
+                icone=r[3],
+                valor=r[4],
+                percentual=float(r[4] / total * 100) if total > 0 else 0,
+                tipo=r[5],
             )
             for r in rows
         ]
@@ -121,32 +90,15 @@ class ReportService:
             from app.core.exceptions import NotFoundError
             raise NotFoundError("Conta não encontrada", "ACCOUNT_NOT_FOUND")
 
-        stmt = select(
-            Transaction.data,
-            func.sum(
-                case(
-                    (and_(Transaction.tipo == TransactionType.RECEITA, Transaction.status == TransactionStatus.CONFIRMADO), Transaction.valor),
-                    (and_(Transaction.tipo == TransactionType.DESPESA, Transaction.status == TransactionStatus.CONFIRMADO), -Transaction.valor),
-                    (and_(Transaction.tipo == TransactionType.TRANSFERENCIA, Transaction.status == TransactionStatus.CONFIRMADO, Transaction.conta_id == conta_id), -Transaction.valor),
-                    (and_(Transaction.tipo == TransactionType.TRANSFERENCIA, Transaction.status == TransactionStatus.CONFIRMADO, Transaction.conta_destino_id == conta_id), Transaction.valor),
-                    else_=0,
-                )
-            ).label("delta"),
-        ).where(
-            Transaction.user_id == user_id,
-            Transaction.conta_id == conta_id,
-            Transaction.data >= data_inicio,
-            Transaction.data < data_fim,
-        ).group_by(Transaction.data).order_by(Transaction.data)
+        deltas = await self.tx_repo.get_installment_aware_balance_delta_for_account(
+            user_id, conta_id, data_inicio, data_fim
+        )
 
-        result = await self.db.execute(stmt)
-        rows = result.all()
-
-        saldo = float(account.saldo_inicial)
+        saldo = Decimal(str(account.saldo_inicial))
         pontos = []
-        for r in rows:
-            saldo += float(r.delta or 0)
-            pontos.append(BalanceEvolutionPoint(data=r.data, saldo=Decimal(str(saldo))))
+        for data, delta in deltas:
+            saldo += delta
+            pontos.append(BalanceEvolutionPoint(data=data, saldo=saldo))
 
         return BalanceEvolutionReport(conta_id=account.id, conta_nome=account.nome, pontos=pontos)
 
