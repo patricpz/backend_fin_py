@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.core.handlers import register_exception_handlers
 from app.core.rate_limit import register_rate_limiter
-from app.api.v1 import auth, accounts, categories, transactions, recurrences, budgets, goals, reports, health
+from app.api.v1 import auth, accounts, categories, transactions, recurrences, budgets, goals, reports, health, ai_assistant
 from app.db.base import Base
 
 
@@ -49,6 +49,7 @@ def create_app(engine=None) -> FastAPI:
     app.include_router(budgets.router, prefix="/api/v1")
     app.include_router(goals.router, prefix="/api/v1")
     app.include_router(reports.router, prefix="/api/v1")
+    app.include_router(ai_assistant.router, prefix="/api/v1")
 
     return app
 
