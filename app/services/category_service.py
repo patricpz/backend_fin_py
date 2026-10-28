@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.category import Category
 from app.repositories.category_repository import CategoryRepository
 from app.schemas.category import CategoryCreate, CategoryUpdate, CategoryTree
-from app.core.exceptions import NotFoundError, BusinessRuleError
+from app.core.exceptions import NotFoundError, BusinessRuleError, ConflictError
 
 
 class CategoryService:
@@ -21,7 +21,18 @@ class CategoryService:
             if parent.tipo != data.tipo:
                 raise BusinessRuleError("Categoria pai deve ser do mesmo tipo", "INVALID_PARENT_TYPE")
 
-        category = Category(user_id=user_id, **data.model_dump())
+        existing = await self.repo.get_by_name_and_type(user_id, data.nome, data.tipo)
+        if existing:
+            raise ConflictError("Category with this name already exists for this user", "CATEGORY_EXISTS")
+
+        category = Category(
+            user_id=user_id,
+            nome=data.nome,
+            tipo=data.tipo,
+            cor=data.cor,
+            icone=data.icone,
+            categoria_pai_id=data.categoria_pai_id,
+        )
         self.db.add(category)
         await self.db.flush()
         await self.db.refresh(category)
@@ -33,7 +44,14 @@ class CategoryService:
             raise NotFoundError("Categoria não encontrada", "CATEGORY_NOT_FOUND")
         return category
 
-    async def list(self, user_id: UUID, tipo: str | None = None, page: int = 1, size: int = 100, ativo_only: bool = True):
+    async def list(
+        self,
+        user_id: UUID,
+        tipo: str | None = None,
+        page: int = 1,
+        size: int = 100,
+        ativo_only: bool | None = True,
+    ):
         categories = await self.repo.get_by_user(user_id, tipo, ativo_only, size, (page - 1) * size)
         total = await self.repo.count_by_user(user_id, tipo, ativo_only)
         return categories, total
@@ -75,15 +93,28 @@ class CategoryService:
         await self.db.refresh(category)
         return category
 
-    async def delete(self, user_id: UUID, category_id: UUID) -> bool:
+    async def delete(self, user_id: UUID, category_id: UUID, migrar_para_id: UUID | None = None) -> bool:
         category = await self.get(user_id, category_id)
-        has_children = await self.repo.has_children(category_id)
-        has_refs = await self.repo.has_transactions_or_budgets(category_id)
+        tx_count = await self.repo.count_transactions(category_id)
 
-        if has_children or has_refs:
-            category.ativo = False
-            await self.db.flush()
-            return False
-        else:
-            await self.repo.delete(category)
-            return True
+        if tx_count > 0:
+            if not migrar_para_id:
+                raise ConflictError(
+                    "Category has transactions. Provide migrar_para_id to reassign before deletion.",
+                    "CATEGORY_HAS_TRANSACTIONS",
+                )
+            if migrar_para_id == category_id:
+                raise BusinessRuleError("Cannot migrate category to itself", "SELF_MIGRATION")
+            target = await self.repo.get_by_id(migrar_para_id, user_id)
+            if not target:
+                raise NotFoundError("Categoria de destino não encontrada", "MIGRATION_CATEGORY_NOT_FOUND")
+            if target.tipo != category.tipo:
+                raise BusinessRuleError("Categoria de destino deve ser do mesmo tipo", "INVALID_PARENT_TYPE")
+
+            await self.repo.reassign_transactions(category_id, migrar_para_id, user_id)
+            await self.repo.reassign_recurring(category_id, migrar_para_id, user_id)
+
+        await self.repo.detach_children(category_id, user_id)
+        await self.repo.delete_budgets(category_id, user_id)
+        await self.repo.delete(category)
+        return True

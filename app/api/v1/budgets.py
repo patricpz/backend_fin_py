@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 from typing import Optional
@@ -21,14 +21,18 @@ async def create_budget(data: BudgetCreate, db: AsyncSession = Depends(get_db), 
 
 @router.get("", response_model=Page[BudgetResponse])
 async def list_budgets(
-    mes: Optional[int] = None,
-    ano: Optional[int] = None,
+    mes: Optional[int] = Query(None),
+    month: Optional[int] = Query(None),
+    ano: Optional[int] = Query(None),
+    year: Optional[int] = Query(None),
     pagination: PaginationParams = Depends(),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    m = mes if mes is not None else month
+    y = ano if ano is not None else year
     service = BudgetService(db)
-    budgets, total = await service.list(current_user.id, mes, ano, pagination.page, pagination.size)
+    budgets, total = await service.list(current_user.id, m, y, pagination.page, pagination.size)
     return Page.create(budgets, total, pagination.page, pagination.size)
 
 

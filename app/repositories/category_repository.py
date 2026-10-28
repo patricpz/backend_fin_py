@@ -1,6 +1,6 @@
 from typing import Optional, Sequence
 from uuid import UUID
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.base import BaseRepository
 from app.models.category import Category
@@ -10,27 +10,49 @@ class CategoryRepository(BaseRepository[Category]):
     def __init__(self, db: AsyncSession):
         super().__init__(Category, db)
 
-    async def get_by_user(self, user_id: UUID, tipo: Optional[str] = None, ativo_only: bool = True, limit: int = 100, offset: int = 0) -> Sequence[Category]:
+    async def get_by_user(
+        self,
+        user_id: UUID,
+        tipo: Optional[str] = None,
+        ativo_only: Optional[bool] = None,
+        limit: int = 100,
+        offset: int = 0
+    ) -> Sequence[Category]:
         stmt = select(Category).where(Category.user_id == user_id)
         if tipo:
             stmt = stmt.where(Category.tipo == tipo)
-        if ativo_only:
-            stmt = stmt.where(Category.ativo == True)
+        if ativo_only is not None:
+            stmt = stmt.where(Category.ativo == ativo_only)
         stmt = stmt.order_by(Category.nome).limit(limit).offset(offset)
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
-    async def count_by_user(self, user_id: UUID, tipo: Optional[str] = None, ativo_only: bool = True) -> int:
+    async def count_by_user(
+        self,
+        user_id: UUID,
+        tipo: Optional[str] = None,
+        ativo_only: Optional[bool] = None
+    ) -> int:
         stmt = select(func.count()).select_from(Category).where(Category.user_id == user_id)
         if tipo:
             stmt = stmt.where(Category.tipo == tipo)
-        if ativo_only:
-            stmt = stmt.where(Category.ativo == True)
+        if ativo_only is not None:
+            stmt = stmt.where(Category.ativo == ativo_only)
         result = await self.db.execute(stmt)
         return result.scalar_one()
 
     async def get_by_id(self, id: UUID, user_id: UUID) -> Optional[Category]:
         result = await self.db.execute(select(Category).where(Category.id == id, Category.user_id == user_id))
+        return result.scalar_one_or_none()
+
+    async def get_by_name_and_type(self, user_id: UUID, nome: str, tipo: str) -> Optional[Category]:
+        result = await self.db.execute(
+            select(Category).where(
+                Category.user_id == user_id,
+                Category.nome == nome,
+                Category.tipo == tipo,
+            )
+        )
         return result.scalar_one_or_none()
 
     async def get_tree(self, user_id: UUID, tipo: Optional[str] = None) -> Sequence[Category]:
@@ -61,3 +83,39 @@ class CategoryRepository(BaseRepository[Category]):
         t_count = await self.db.execute(select(func.count()).select_from(Transaction).where(Transaction.categoria_id == category_id))
         b_count = await self.db.execute(select(func.count()).select_from(Budget).where(Budget.categoria_id == category_id))
         return t_count.scalar_one() > 0 or b_count.scalar_one() > 0
+
+    async def count_transactions(self, category_id: UUID) -> int:
+        from app.models.transaction import Transaction
+        result = await self.db.execute(
+            select(func.count()).select_from(Transaction).where(Transaction.categoria_id == category_id)
+        )
+        return result.scalar_one()
+
+    async def reassign_transactions(self, from_category_id: UUID, to_category_id: UUID, user_id: UUID) -> None:
+        from app.models.transaction import Transaction
+        await self.db.execute(
+            update(Transaction)
+            .where(Transaction.categoria_id == from_category_id, Transaction.user_id == user_id)
+            .values(categoria_id=to_category_id)
+        )
+
+    async def reassign_recurring(self, from_category_id: UUID, to_category_id: UUID, user_id: UUID) -> None:
+        from app.models.recurrence import RecurringTransaction
+        await self.db.execute(
+            update(RecurringTransaction)
+            .where(RecurringTransaction.categoria_id == from_category_id, RecurringTransaction.user_id == user_id)
+            .values(categoria_id=to_category_id)
+        )
+
+    async def detach_children(self, parent_id: UUID, user_id: UUID) -> None:
+        await self.db.execute(
+            update(Category)
+            .where(Category.categoria_pai_id == parent_id, Category.user_id == user_id)
+            .values(categoria_pai_id=None)
+        )
+
+    async def delete_budgets(self, category_id: UUID, user_id: UUID) -> None:
+        from app.models.budget import Budget
+        await self.db.execute(
+            delete(Budget).where(Budget.categoria_id == category_id, Budget.user_id == user_id)
+        )
