@@ -35,6 +35,7 @@ class Transaction(Base, TimestampMixin):
     __table_args__ = (
         CheckConstraint("valor > 0", name="ck_transactions_valor_positive"),
         Index("ix_transactions_user_data_desc", "user_id", "data"),
+        Index("ix_transactions_user_date_status", "user_id", "data", "status"),
         Index("ix_transactions_conta_data", "conta_id", "data"),
         Index("ix_transactions_categoria_data", "categoria_id", "data"),
         Index("ix_transactions_status_data", "status", "data"),

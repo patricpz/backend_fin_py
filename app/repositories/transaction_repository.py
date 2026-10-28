@@ -375,3 +375,47 @@ class TransactionRepository(BaseRepository[Transaction]):
         )
         result = await self.db.execute(stmt)
         return Decimal(str(result.scalar_one()))
+
+    async def get_account_monthly_totals(
+        self,
+        user_id: UUID,
+        conta_id: UUID,
+        data_inicio: date,
+        data_fim: date,
+    ) -> tuple[Decimal, Decimal]:
+        stmt = (
+            select(
+                func.coalesce(func.sum(case((and_(Transaction.tipo == TransactionType.RECEITA, Transaction.status == TransactionStatus.CONFIRMADO), Transaction.valor), else_=0)), 0).label("receitas"),
+                func.coalesce(func.sum(case((and_(Transaction.tipo == TransactionType.DESPESA, Transaction.status == TransactionStatus.CONFIRMADO), Transaction.valor), else_=0)), 0).label("despesas"),
+            )
+            .where(
+                Transaction.user_id == user_id,
+                Transaction.conta_id == conta_id,
+                Transaction.data >= data_inicio,
+                Transaction.data < data_fim,
+            )
+        )
+        row = (await self.db.execute(stmt)).one()
+        return Decimal(str(row.receitas or 0)), Decimal(str(row.despesas or 0))
+
+    async def get_monthly_totals_for_year(
+        self,
+        user_id: UUID,
+        ano: int,
+        conta_id: Optional[UUID] = None,
+    ) -> list[tuple[int, Decimal, Decimal, Decimal]]:
+        results = []
+        for mes in range(1, 13):
+            data_inicio = date(ano, mes, 1)
+            if mes == 12:
+                data_fim = date(ano + 1, 1, 1)
+            else:
+                data_fim = date(ano, mes + 1, 1)
+
+            if conta_id:
+                receitas, despesas = await self.get_account_monthly_totals(user_id, conta_id, data_inicio, data_fim)
+            else:
+                receitas, despesas, _ = await self.get_installment_aware_monthly_totals(user_id, data_inicio, data_fim)
+
+            results.append((mes, receitas, despesas, receitas - despesas))
+        return results

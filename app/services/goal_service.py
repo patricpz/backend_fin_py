@@ -4,10 +4,9 @@ from uuid import UUID
 from datetime import date
 from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from app.models.goal import Goal, GoalContribution
 from app.repositories.goal_repository import GoalRepository, GoalContributionRepository
-from app.schemas.goal import GoalCreate, GoalUpdate, GoalResponse, GoalContributionCreate, GoalContributionResponse
+from app.schemas.goal import GoalCreate, GoalUpdate, GoalResponse, GoalProgressResponse, GoalContributionCreate, GoalContributionResponse
 from app.core.exceptions import NotFoundError, BusinessRuleError
 from app.models.enums import GoalStatus, GoalContributionType
 
@@ -22,11 +21,18 @@ class GoalService:
         current = await self.contrib_repo.get_current_value(goal.id)
         goal.valor_atual = Decimal(str(current)).quantize(Decimal("0.01"))
         percentual = min((current / float(goal.valor_alvo)) * 100, 100) if goal.valor_alvo > 0 else 0
-        goal.progresso_percentual = percentual
+        goal.progresso_percentual = round(percentual, 2)
         return goal
 
     async def create(self, user_id: UUID, data: GoalCreate) -> Goal:
-        goal = Goal(user_id=user_id, **data.model_dump())
+        goal = Goal(
+            user_id=user_id,
+            nome=data.nome,
+            descricao=data.descricao,
+            valor_alvo=data.valor_alvo,
+            data_alvo=data.data_alvo,
+            categoria=data.categoria,
+        )
         self.db.add(goal)
         await self.db.flush()
         await self.db.refresh(goal)
@@ -58,7 +64,9 @@ class GoalService:
         return await self._with_progress(goal)
 
     async def delete(self, user_id: UUID, goal_id: UUID) -> None:
-        goal = await self.get(user_id, goal_id)
+        goal = await self.repo.get_by_id(goal_id, user_id)
+        if not goal:
+            raise NotFoundError("Meta não encontrada", "GOAL_NOT_FOUND")
         await self.repo.delete(goal)
 
     async def add_contribution(self, user_id: UUID, goal_id: UUID, data: GoalContributionCreate) -> GoalContribution:
@@ -68,13 +76,24 @@ class GoalService:
         if goal.status == GoalStatus.CANCELADA:
             raise BusinessRuleError("Meta cancelada", "GOAL_CANCELLED")
 
-        contribution = GoalContribution(goal_id=goal_id, **data.model_dump())
+        current = await self.contrib_repo.get_current_value(goal_id)
+        if data.tipo == GoalContributionType.RETIRADA:
+            if float(data.valor) > current:
+                raise BusinessRuleError("Insufficient funds for withdrawal", "INSUFFICIENT_FUNDS")
+
+        contribution = GoalContribution(
+            goal_id=goal_id,
+            valor=data.valor,
+            tipo=data.tipo,
+            data=data.data,
+            observacao=data.observacao,
+        )
         self.db.add(contribution)
         await self.db.flush()
         await self.db.refresh(contribution)
 
-        current = await self.contrib_repo.get_current_value(goal_id)
-        if current >= float(goal.valor_alvo):
+        new_current = await self.contrib_repo.get_current_value(goal_id)
+        if new_current >= float(goal.valor_alvo) and goal.status == GoalStatus.EM_ANDAMENTO:
             goal.status = GoalStatus.CONCLUIDA
             await self.db.flush()
         return contribution
@@ -82,16 +101,17 @@ class GoalService:
     async def get_contributions(self, user_id: UUID, goal_id: UUID, page: int = 1, size: int = 20):
         await self.get(user_id, goal_id)
         contributions = await self.contrib_repo.get_by_goal(goal_id, size, (page - 1) * size)
-        return contributions
+        total = await self.contrib_repo.count_by_goal(goal_id)
+        return contributions, total
 
-    async def get_progress(self, user_id: UUID, goal_id: UUID) -> dict:
+    async def get_progress(self, user_id: UUID, goal_id: UUID) -> GoalProgressResponse:
         goal = await self.get(user_id, goal_id)
         current = await self.contrib_repo.get_current_value(goal_id)
         percentual = min((current / float(goal.valor_alvo)) * 100, 100) if goal.valor_alvo > 0 else 0
-        return {
-            "goal_id": goal.id,
-            "valor_alvo": goal.valor_alvo,
-            "valor_atual": Decimal(str(current)).quantize(Decimal("0.01")),
-            "progresso_percentual": percentual,
-            "status": goal.status,
-        }
+        return GoalProgressResponse(
+            goal_id=goal.id,
+            valor_alvo=goal.valor_alvo,
+            valor_atual=Decimal(str(current)).quantize(Decimal("0.01")),
+            progresso_percentual=round(percentual, 2),
+            status=goal.status.value if hasattr(goal.status, "value") else str(goal.status),
+        )

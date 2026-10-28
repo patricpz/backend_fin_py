@@ -35,9 +35,14 @@ class GoalContributionRepository(BaseRepository[GoalContribution]):
         super().__init__(GoalContribution, db)
 
     async def get_by_goal(self, goal_id: UUID, limit: int = 100, offset: int = 0) -> Sequence[GoalContribution]:
-        stmt = select(GoalContribution).where(GoalContribution.goal_id == goal_id).order_by(GoalContribution.data.desc()).limit(limit).offset(offset)
+        stmt = select(GoalContribution).where(GoalContribution.goal_id == goal_id).order_by(GoalContribution.data.desc(), GoalContribution.criado_em.desc()).limit(limit).offset(offset)
         result = await self.db.execute(stmt)
         return result.scalars().all()
+
+    async def count_by_goal(self, goal_id: UUID) -> int:
+        stmt = select(func.count()).select_from(GoalContribution).where(GoalContribution.goal_id == goal_id)
+        result = await self.db.execute(stmt)
+        return result.scalar_one()
 
     async def get_current_value(self, goal_id: UUID) -> float:
         from app.models.enums import GoalContributionType

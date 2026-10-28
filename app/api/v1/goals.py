@@ -4,7 +4,7 @@ from uuid import UUID
 from typing import Optional
 from app.db.session import get_db
 from app.core.deps import get_current_user, PaginationParams
-from app.schemas.goal import GoalCreate, GoalUpdate, GoalResponse, GoalContributionCreate, GoalContributionResponse
+from app.schemas.goal import GoalCreate, GoalUpdate, GoalResponse, GoalProgressResponse, GoalContributionCreate, GoalContributionResponse
 from app.services.goal_service import GoalService
 from app.schemas.common import Page
 from app.models.user import User
@@ -37,7 +37,7 @@ async def get_goal(goal_id: UUID, db: AsyncSession = Depends(get_db), current_us
     return await service.get(current_user.id, goal_id)
 
 
-@router.get("/{goal_id}/progress")
+@router.get("/{goal_id}/progress", response_model=GoalProgressResponse)
 async def get_goal_progress(goal_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     service = GoalService(db)
     return await service.get_progress(current_user.id, goal_id)
@@ -57,8 +57,7 @@ async def list_contributions(
     current_user: User = Depends(get_current_user)
 ):
     service = GoalService(db)
-    contributions = await service.get_contributions(current_user.id, goal_id, pagination.page, pagination.size)
-    total = len(contributions)
+    contributions, total = await service.get_contributions(current_user.id, goal_id, pagination.page, pagination.size)
     return Page.create(contributions, total, pagination.page, pagination.size)
 
 
