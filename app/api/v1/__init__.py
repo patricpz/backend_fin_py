@@ -1,4 +1,4 @@
-from . import auth, accounts, categories, transactions, recurrences, budgets, goals, reports, health, ai_assistant
+from . import auth, accounts, categories, transactions, recurrences, budgets, goals, reports, health, ai_assistant, notifications, push, expenses
 
 __all__ = [
     "auth",
@@ -11,4 +11,7 @@ __all__ = [
     "reports",
     "health",
     "ai_assistant",
+    "notifications",
+    "push",
+    "expenses",
 ]

@@ -7,6 +7,12 @@ from app.models.budget import Budget
 from app.models.goal import Goal, GoalContribution
 from app.models.refresh_token import RefreshToken
 from app.models.installment import Installment
+from app.models.notification import (
+    Notification,
+    NotificationPreference,
+    PushSubscription,
+    NotificationFeedback,
+)
 
 __all__ = [
     "User",
@@ -19,4 +25,8 @@ __all__ = [
     "GoalContribution",
     "RefreshToken",
     "Installment",
+    "Notification",
+    "NotificationPreference",
+    "PushSubscription",
+    "NotificationFeedback",
 ]

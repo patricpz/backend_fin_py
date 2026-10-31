@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field, ConfigDict, AliasChoices, computed_field
 from typing import Optional
 from uuid import UUID
-from datetime import date, datetime
+from datetime import date as dt_date, date, datetime
 from decimal import Decimal
 from app.models.enums import GoalStatus, GoalContributionType
 
@@ -132,7 +132,7 @@ class GoalContributionCreate(GoalContributionBase):
 
 
 class GoalContributionResponse(GoalContributionBase):
-    model_config = ConfigDict(from_attributes=True, extra="ignore", populate_by_name=True)
+    model_config = ConfigDict(from_attributes=True, extra="ignore", populate_by_name=True, arbitrary_types_allowed=True)
     id: UUID
     goal_id: UUID
     criado_em: datetime
@@ -154,7 +154,7 @@ class GoalContributionResponse(GoalContributionBase):
 
     @computed_field
     @property
-    def date(self) -> date:
+    def date(self) -> dt_date:
         return self.data
 
     @computed_field

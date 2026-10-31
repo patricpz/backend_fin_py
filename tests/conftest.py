@@ -25,6 +25,22 @@ from app.models import (
 
 
 def _ensure_all_models_registered() -> None:
+    from app.models import (
+        User,
+        Account,
+        Category,
+        Transaction,
+        RecurringTransaction,
+        Budget,
+        Goal,
+        GoalContribution,
+        RefreshToken,
+        Installment,
+        Notification,
+        NotificationPreference,
+        PushSubscription,
+        NotificationFeedback,
+    )
     package_models = (
         User,
         Account,
@@ -36,6 +52,10 @@ def _ensure_all_models_registered() -> None:
         GoalContribution,
         RefreshToken,
         Installment,
+        Notification,
+        NotificationPreference,
+        PushSubscription,
+        NotificationFeedback,
     )
     for model in package_models:
         if not hasattr(model, "__table__"):
