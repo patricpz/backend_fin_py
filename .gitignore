@@ -75,3 +75,5 @@ temp/
 .claude
 .freebuff
 claude
+
+.env

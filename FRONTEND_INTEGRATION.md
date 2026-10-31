@@ -1,6 +1,9 @@
 # Guia de Integração — API Financeiro Pessoal
 
 > Documento técnico voltado ao desenvolvimento do frontend PWA que consome esta API.
+> 
+> 💡 **Novas Funcionalidades (Notificações, Web Push, Despesas Parceladas e Ajuste de Saldo):**  
+> Consulte o [GUIA_FRONTEND_NOVAS_FUNCIONALIDADES.md](file:///W:/projetos/backend-fin-py/GUIA_FRONTEND_NOVAS_FUNCIONALIDADES.md) para o manual prático com exemplos completos em TypeScript e Service Worker.
 
 ---
 
@@ -437,14 +440,17 @@ Retorna array aninhado (sem paginação):
 
 ### 4.4 Transações
 
-| Método | Rota                              | Autenticado | Descrição              |
-|--------|-----------------------------------|-------------|-------------------------|
-| POST   | `/transactions`                   | Sim         | Criar transação         |
-| GET    | `/transactions`                   | Sim         | Listar (paginado, filtros) |
-| GET    | `/transactions/{id}`              | Sim         | Detalhes                |
-| PATCH  | `/transactions/{id}`              | Sim         | Atualizar (parcial)     |
-| DELETE | `/transactions/{id}`              | Sim         | Remover                 |
-| POST   | `/transactions/{id}/confirm`      | Sim         | Confirmar transação     |
+| Método | Rota                                  | Autenticado | Descrição                                    |
+|--------|---------------------------------------|-------------|----------------------------------------------|
+| POST   | `/transactions`                       | Sim         | Criar transação (normal ou parcelada)        |
+| GET    | `/transactions`                       | Sim         | Listar (paginado, filtros)                   |
+| GET    | `/transactions/installments`          | Sim         | Listar despesas parceladas com progresso     |
+| GET    | `/transactions/installments/summary`  | Sim         | Métricas consolidadas das despesas parceladas|
+| GET    | `/transactions/{id}`                  | Sim         | Detalhes (inclui métricas de parcelamento)   |
+| PATCH  | `/transactions/{id}`                  | Sim         | Atualizar (parcial)                          |
+| DELETE | `/transactions/{id}`                  | Sim         | Remover                                      |
+| POST   | `/transactions/{id}/confirm`          | Sim         | Confirmar transação                          |
+| PATCH  | `/transactions/{id}/pay`              | Sim         | Registrar pagamento de parcela / progresso   |
 
 #### Criar transação — `POST /transactions`
 
@@ -497,7 +503,96 @@ Retorna array aninhado (sem paginação):
 
 ---
 
-##### Parcelamento — `POST /transactions/{id}/parcelar`
+##### Despesas Parceladas com Progresso (Cards de Parcelamento)
+
+O backend possui suporte a **Despesas Parceladas** com cálculo automático de métricas de progresso, ideal para cards com barra de progresso no frontend (ex.: `"Tablet 20% 2/10"`).
+
+###### 1. Cadastrar despesa parcelada — `POST /transactions`
+
+Basta enviar `is_installment=true` (ou `isInstallment: true`) com o número de parcelas e a data do primeiro vencimento:
+
+```json
+{
+  "conta_id": "uuid-da-conta",
+  "categoria_id": "uuid-da-categoria",
+  "tipo": "despesa",
+  "valor": "1000.00",
+  "data": "2026-08-01",
+  "descricao": "Tablet",
+  "isInstallment": true,
+  "installmentCount": 10,
+  "paidInstallments": 2,
+  "firstDueDate": "2026-09-01"
+}
+```
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `isInstallment` (ou `is_installment`) | boolean | Indica se a despesa é parcelada (`true`). |
+| `installmentCount` (ou `installment_count`) | int | Quantidade total de parcelas (entre 2 e 24). |
+| `paidInstallments` (ou `paid_installments`) | int | Parcelas já quitadas inicialmente (padrão `0`). |
+| `firstDueDate` (ou `first_due_date`) | date | Data de vencimento da 1ª parcela (`YYYY-MM-DD`). |
+
+**Campos de progresso calculados retornados automaticamente no response:**
+
+```json
+{
+  "id": "uuid",
+  "descricao": "Tablet",
+  "valor": "1000.00",
+  "isInstallment": true,
+  "installmentCount": 10,
+  "paidInstallments": 2,
+  "progressPercent": 20,
+  "installmentDisplay": "2/10",
+  "progressDisplay": "20%",
+  "installmentAmount": "100.00",
+  "paidAmount": "200.00",
+  "remainingAmount": "800.00",
+  "remainingInstallments": 8,
+  "nextDueDate": "2026-11-01",
+  "isCompleted": false
+}
+```
+
+###### 2. Listar despesas parceladas — `GET /transactions/installments`
+
+Retorna uma listagem paginada (`Page[TransactionInstallmentResponse]`) contendo apenas as despesas parceladas, com todas as métricas calculadas em cada item.
+
+**Query params opcionais:**
+- `completed`: `false` para filtrar apenas parcelamentos ativos / em andamento; `true` para concluídos.
+- `conta_id`, `categoria_id`, `descricao`, etc.
+- `page` (padrão 1), `size` (padrão 20).
+
+###### 3. Métricas consolidadas (Dashboard) — `GET /transactions/installments/summary`
+
+Retorna os números consolidados de todos os parcelamentos do usuário para cards de cabeçalho:
+
+```json
+{
+  "totalInstallmentsCount": 2,
+  "activeCount": 1,
+  "completedCount": 1,
+  "totalAmount": "1300.00",
+  "totalPaidAmount": "500.00",
+  "totalRemainingAmount": "800.00",
+  "totalInstallments": 13,
+  "totalPaidInstallments": 5,
+  "totalRemainingInstallments": 8,
+  "overallProgressPercent": 38,
+  "nextDueDate": "2026-11-01"
+}
+```
+
+###### 4. Registrar pagamento de parcela — `PATCH /transactions/{id}/pay`
+
+- **Avançar 1 parcela:** envie o body vazio `{}` ou sem body. O backend incrementa automaticamente `paid_installments + 1` e recalcula `progressPercent`, `remainingAmount`, `nextDueDate`, etc.
+- **Definir quantidade exata:** envie `{"paidInstallments": 5}`.
+- Se todas as parcelas forem pagas (`paidInstallments == installmentCount`), `isCompleted` torna-se `true` e `nextDueDate` torna-se `null`. Tentativas de novo pagamento após concluído retornam `409 Conflict`.
+
+---
+
+##### Parcelamento legado via tabela de parcelas — `POST /transactions/{id}/parcelar`
 
 Cria parcelas para uma transação de **despesa** ou **receita** já existente.
 

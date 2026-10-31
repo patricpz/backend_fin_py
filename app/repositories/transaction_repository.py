@@ -29,7 +29,15 @@ class TransactionRepository(BaseRepository[Transaction]):
 
         if filters:
             if filters.conta_id:
-                stmt = stmt.where(Transaction.conta_id == filters.conta_id)
+                stmt = stmt.where(
+                    or_(
+                        Transaction.conta_id == filters.conta_id,
+                        and_(
+                            Transaction.tipo == TransactionType.TRANSFERENCIA,
+                            Transaction.conta_destino_id == filters.conta_id,
+                        ),
+                    )
+                )
             if filters.categoria_id:
                 stmt = stmt.where(Transaction.categoria_id == filters.categoria_id)
             if filters.tipo:
@@ -42,8 +50,57 @@ class TransactionRepository(BaseRepository[Transaction]):
                 stmt = stmt.where(Transaction.data <= filters.data_fim)
             if filters.descricao:
                 stmt = stmt.where(Transaction.descricao.ilike(f"%{filters.descricao}%"))
+            if filters.is_installment is not None:
+                stmt = stmt.where(Transaction.is_installment == filters.is_installment)
+            if filters.completed is not None:
+                if filters.completed:
+                    stmt = stmt.where(Transaction.paid_installments >= Transaction.installment_count)
+                else:
+                    stmt = stmt.where(Transaction.paid_installments < Transaction.installment_count)
 
         stmt = stmt.order_by(Transaction.data.desc(), Transaction.criado_em.desc()).limit(limit).offset(offset)
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
+
+    async def get_all_by_user(
+        self,
+        user_id: UUID,
+        filters: Optional[TransactionFilters] = None,
+    ) -> Sequence[Transaction]:
+        stmt = select(Transaction).where(Transaction.user_id == user_id)
+
+        if filters:
+            if filters.conta_id:
+                stmt = stmt.where(
+                    or_(
+                        Transaction.conta_id == filters.conta_id,
+                        and_(
+                            Transaction.tipo == TransactionType.TRANSFERENCIA,
+                            Transaction.conta_destino_id == filters.conta_id,
+                        ),
+                    )
+                )
+            if filters.categoria_id:
+                stmt = stmt.where(Transaction.categoria_id == filters.categoria_id)
+            if filters.tipo:
+                stmt = stmt.where(Transaction.tipo == filters.tipo)
+            if filters.status:
+                stmt = stmt.where(Transaction.status == filters.status)
+            if filters.data_inicio:
+                stmt = stmt.where(Transaction.data >= filters.data_inicio)
+            if filters.data_fim:
+                stmt = stmt.where(Transaction.data <= filters.data_fim)
+            if filters.descricao:
+                stmt = stmt.where(Transaction.descricao.ilike(f"%{filters.descricao}%"))
+            if filters.is_installment is not None:
+                stmt = stmt.where(Transaction.is_installment == filters.is_installment)
+            if filters.completed is not None:
+                if filters.completed:
+                    stmt = stmt.where(Transaction.paid_installments >= Transaction.installment_count)
+                else:
+                    stmt = stmt.where(Transaction.paid_installments < Transaction.installment_count)
+
+        stmt = stmt.order_by(Transaction.data.desc(), Transaction.criado_em.desc())
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
@@ -52,7 +109,15 @@ class TransactionRepository(BaseRepository[Transaction]):
 
         if filters:
             if filters.conta_id:
-                stmt = stmt.where(Transaction.conta_id == filters.conta_id)
+                stmt = stmt.where(
+                    or_(
+                        Transaction.conta_id == filters.conta_id,
+                        and_(
+                            Transaction.tipo == TransactionType.TRANSFERENCIA,
+                            Transaction.conta_destino_id == filters.conta_id,
+                        ),
+                    )
+                )
             if filters.categoria_id:
                 stmt = stmt.where(Transaction.categoria_id == filters.categoria_id)
             if filters.tipo:
@@ -65,6 +130,13 @@ class TransactionRepository(BaseRepository[Transaction]):
                 stmt = stmt.where(Transaction.data <= filters.data_fim)
             if filters.descricao:
                 stmt = stmt.where(Transaction.descricao.ilike(f"%{filters.descricao}%"))
+            if filters.is_installment is not None:
+                stmt = stmt.where(Transaction.is_installment == filters.is_installment)
+            if filters.completed is not None:
+                if filters.completed:
+                    stmt = stmt.where(Transaction.paid_installments >= Transaction.installment_count)
+                else:
+                    stmt = stmt.where(Transaction.paid_installments < Transaction.installment_count)
 
         result = await self.db.execute(stmt)
         return result.scalar_one()
@@ -279,7 +351,13 @@ class TransactionRepository(BaseRepository[Transaction]):
             )
             .where(
                 Transaction.user_id == user_id,
-                Transaction.conta_id == conta_id,
+                or_(
+                    Transaction.conta_id == conta_id,
+                    and_(
+                        Transaction.tipo == TransactionType.TRANSFERENCIA,
+                        Transaction.conta_destino_id == conta_id,
+                    ),
+                ),
                 Transaction.data >= data_inicio,
                 Transaction.data < data_fim,
             )
@@ -327,41 +405,52 @@ class TransactionRepository(BaseRepository[Transaction]):
         return result
 
     async def has_transactions(self, account_id: UUID) -> bool:
-        from sqlalchemy import exists
+        from sqlalchemy import exists, or_
         result = await self.db.execute(
-            select(exists()).where(Transaction.conta_id == account_id)
+            select(exists()).where(
+                or_(
+                    Transaction.conta_id == account_id,
+                    Transaction.conta_destino_id == account_id,
+                )
+            )
         )
         return bool(result.scalar_one())
 
     async def get_account_balance(self, account_id: UUID) -> Decimal:
-        stmt = select(func.coalesce(func.sum(Transaction.valor), 0)).where(
+        stmt_rec = select(func.coalesce(func.sum(Transaction.valor), 0)).where(
             Transaction.conta_id == account_id,
             Transaction.status == TransactionStatus.CONFIRMADO,
-            or_(
-                Transaction.tipo == TransactionType.RECEITA,
-                Transaction.tipo == TransactionType.DESPESA,
-            )
+            Transaction.tipo == TransactionType.RECEITA,
         )
-        result = await self.db.execute(stmt)
-        receitas = result.scalar_one()
+        receitas = (await self.db.execute(stmt_rec)).scalar_one()
 
-        stmt = select(func.coalesce(func.sum(Transaction.valor), 0)).where(
+        stmt_desp = select(func.coalesce(func.sum(Transaction.valor), 0)).where(
             Transaction.conta_id == account_id,
             Transaction.status == TransactionStatus.CONFIRMADO,
-            Transaction.tipo == TransactionType.TRANSFERENCIA
+            Transaction.tipo == TransactionType.DESPESA,
         )
-        result = await self.db.execute(stmt)
-        transferencias_enviadas = result.scalar_one()
+        despesas = (await self.db.execute(stmt_desp)).scalar_one()
 
-        stmt = select(func.coalesce(func.sum(Transaction.valor), 0)).where(
+        stmt_transf_env = select(func.coalesce(func.sum(Transaction.valor), 0)).where(
+            Transaction.conta_id == account_id,
+            Transaction.status == TransactionStatus.CONFIRMADO,
+            Transaction.tipo == TransactionType.TRANSFERENCIA,
+        )
+        transferencias_enviadas = (await self.db.execute(stmt_transf_env)).scalar_one()
+
+        stmt_transf_rec = select(func.coalesce(func.sum(Transaction.valor), 0)).where(
             Transaction.conta_destino_id == account_id,
             Transaction.status == TransactionStatus.CONFIRMADO,
-            Transaction.tipo == TransactionType.TRANSFERENCIA
+            Transaction.tipo == TransactionType.TRANSFERENCIA,
         )
-        result = await self.db.execute(stmt)
-        transferencias_recebidas = result.scalar_one()
+        transferencias_recebidas = (await self.db.execute(stmt_transf_rec)).scalar_one()
 
-        return Decimal(str(receitas)) - Decimal(str(transferencias_enviadas)) + Decimal(str(transferencias_recebidas))
+        return (
+            Decimal(str(receitas))
+            - Decimal(str(despesas))
+            - Decimal(str(transferencias_enviadas))
+            + Decimal(str(transferencias_recebidas))
+        )
 
     async def get_category_spending(self, user_id: UUID, categoria_id: UUID, data_inicio: date, data_fim: date) -> Decimal:
         from app.models.category import Category
@@ -390,7 +479,13 @@ class TransactionRepository(BaseRepository[Transaction]):
             )
             .where(
                 Transaction.user_id == user_id,
-                Transaction.conta_id == conta_id,
+                or_(
+                    Transaction.conta_id == conta_id,
+                    and_(
+                        Transaction.tipo == TransactionType.TRANSFERENCIA,
+                        Transaction.conta_destino_id == conta_id,
+                    ),
+                ),
                 Transaction.data >= data_inicio,
                 Transaction.data < data_fim,
             )

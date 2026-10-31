@@ -1,7 +1,7 @@
 from pydantic import BaseModel, ConfigDict, computed_field
 from typing import List
 from uuid import UUID
-from datetime import date
+from datetime import date as dt_date, date
 from decimal import Decimal
 
 
@@ -132,7 +132,7 @@ class BalanceEvolutionPoint(BaseModel):
 
     @computed_field
     @property
-    def date(self) -> date:
+    def date(self) -> dt_date:
         return self.data
 
     @computed_field

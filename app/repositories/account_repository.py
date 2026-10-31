@@ -31,7 +31,13 @@ class AccountRepository(BaseRepository[Account]):
 
     async def has_transactions(self, account_id: UUID) -> bool:
         from app.models.transaction import Transaction
+        from sqlalchemy import or_
         result = await self.db.execute(
-            select(func.count()).select_from(Transaction).where(Transaction.conta_id == account_id)
+            select(func.count()).select_from(Transaction).where(
+                or_(
+                    Transaction.conta_id == account_id,
+                    Transaction.conta_destino_id == account_id,
+                )
+            )
         )
         return result.scalar_one() > 0

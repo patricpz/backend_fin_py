@@ -1,10 +1,19 @@
-from fastapi import APIRouter, Depends, status, Header
+from fastapi import APIRouter, Depends, status, Header, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 from typing import Optional
 from app.db.session import get_db
 from app.core.deps import get_current_user, PaginationParams
-from app.schemas.transaction import TransactionCreate, TransactionUpdate, TransactionResponse, TransactionResponseWithInstallments, TransactionFilters
+from app.schemas.transaction import (
+    TransactionCreate,
+    TransactionUpdate,
+    TransactionResponse,
+    TransactionResponseWithInstallments,
+    TransactionFilters,
+    InstallmentPayRequest,
+    TransactionInstallmentResponse,
+    InstallmentsSummaryResponse,
+)
 from app.schemas.installment import InstallmentCreate, InstallmentResponse
 from app.services.transaction_service import TransactionService
 from app.schemas.common import Page
@@ -25,7 +34,11 @@ async def create_transaction(
     service = TransactionService(db)
     if idempotency_key:
         data.idempotency_key = idempotency_key
-    return await service.create(current_user.id, data)
+    transaction = await service.create(current_user.id, data)
+    # Anexa progresso se for despesa parcelada
+    if transaction.is_installment:
+        service._attach_progress(transaction)
+    return transaction
 
 
 @router.get("", response_model=Page[TransactionResponse])
@@ -37,13 +50,44 @@ async def list_transactions(
 ):
     service = TransactionService(db)
     transactions, total = await service.list(current_user.id, filters, pagination.page, pagination.size)
+    # Anexa progresso para qualquer transação parcelada na lista
+    for tx in transactions:
+        if tx.is_installment:
+            service._attach_progress(tx)
     return Page.create(transactions, total, pagination.page, pagination.size)
+
+
+@router.get("/installments", response_model=Page[TransactionInstallmentResponse])
+async def list_installments(
+    filters: TransactionFilters = Depends(),
+    pagination: PaginationParams = Depends(),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Lista despesas parceladas do usuário autenticado com progresso de pagamento."""
+    service = TransactionService(db)
+    transactions, total = await service.list_installments(current_user.id, filters, pagination.page, pagination.size)
+    return Page.create(transactions, total, pagination.page, pagination.size)
+
+
+@router.get("/installments/summary", response_model=InstallmentsSummaryResponse)
+async def get_installments_summary(
+    filters: TransactionFilters = Depends(),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Retorna métricas consolidadas dos parcelamentos do usuário (cards de dashboard)."""
+    service = TransactionService(db)
+    return await service.get_installments_summary(current_user.id, filters)
 
 
 @router.get("/{transaction_id}", response_model=TransactionResponse)
 async def get_transaction(transaction_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     service = TransactionService(db)
-    return await service.get(current_user.id, transaction_id)
+    transaction = await service.get(current_user.id, transaction_id)
+    if transaction.is_installment:
+        service._attach_progress(transaction)
+    return transaction
 
 
 @router.patch("/{transaction_id}", response_model=TransactionResponse)
@@ -62,6 +106,23 @@ async def delete_transaction(transaction_id: UUID, db: AsyncSession = Depends(ge
 async def confirm_transaction(transaction_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     service = TransactionService(db)
     return await service.confirm(current_user.id, transaction_id)
+
+
+@router.patch("/{transaction_id}/pay", response_model=TransactionInstallmentResponse)
+async def pay_installment(
+    transaction_id: UUID,
+    payload: Optional[InstallmentPayRequest] = Body(default=None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Registra pagamento de uma parcela (incrementa paid_installments).
+
+    Body opcional: { "paidInstallments": n } para correção manual, ou omitido/vazio para pagar a próxima parcela.
+    """
+    service = TransactionService(db)
+    transaction = await service.pay_installment(current_user.id, transaction_id, payload)
+    service._attach_progress(transaction)
+    return transaction
 
 
 @router.post("/{transaction_id}/parcelar", response_model=TransactionResponseWithInstallments)

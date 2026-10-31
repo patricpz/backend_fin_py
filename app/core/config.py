@@ -1,6 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
-from typing import List
+from typing import List, Optional
 
 
 class Settings(BaseSettings):
@@ -36,6 +36,12 @@ class Settings(BaseSettings):
     CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:5173"]
 
     RATE_LIMIT_LOGIN: str = "5/minute"
+
+    VAPID_PUBLIC_KEY: Optional[str] = None
+    VAPID_PRIVATE_KEY: Optional[str] = None
+    VAPID_SUBJECT: str = "mailto:admin@financeiro.com"
+    NOTIFICATION_PROVIDER: str = "template"
+    NOTIFICATION_JOBS_ENABLED: bool = False
 
 
 settings = Settings()
