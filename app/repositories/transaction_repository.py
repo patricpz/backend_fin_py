@@ -465,6 +465,17 @@ class TransactionRepository(BaseRepository[Transaction]):
         result = await self.db.execute(stmt)
         return Decimal(str(result.scalar_one()))
 
+    async def get_total_expense_spending(self, user_id: UUID, data_inicio: date, data_fim: date) -> Decimal:
+        stmt = select(func.coalesce(func.sum(Transaction.valor), 0)).where(
+            Transaction.user_id == user_id,
+            Transaction.status == TransactionStatus.CONFIRMADO,
+            Transaction.tipo == TransactionType.DESPESA,
+            Transaction.data >= data_inicio,
+            Transaction.data <= data_fim,
+        )
+        result = await self.db.execute(stmt)
+        return Decimal(str(result.scalar_one()))
+
     async def get_account_monthly_totals(
         self,
         user_id: UUID,

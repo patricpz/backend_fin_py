@@ -135,7 +135,7 @@ class NotificationRepository:
     async def create_default_preferences(self, user_id: UUID) -> NotificationPreference:
         prefs = NotificationPreference(
             user_id=user_id,
-            enabled_types=["overspending", "spending_spike", "installment_due", "tip", "summary"],
+            enabled_types=["overspending", "spending_spike", "installment_due", "tip", "summary", "welcome"],
             channel_in_app=True,
             channel_push=False,
             sensitivity="medium",

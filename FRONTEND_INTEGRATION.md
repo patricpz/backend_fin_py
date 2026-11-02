@@ -762,8 +762,11 @@ O parâmetro `data_limite` (opcional) define até qual data gerar transações. 
 
 #### Criar orçamento — `POST /budgets`
 
+Permite criar tanto um orçamento específico por categoria quanto um **Orçamento Geral de Gastos do Mês** (sem categoria vinculada).
+
 ```json
 {
+  "nome": "Supermercado Mensal",
   "categoria_id": "uuid-categoria-despesa",
   "valor_limite": "2000.00",
   "mes": 8,
@@ -772,17 +775,31 @@ O parâmetro `data_limite` (opcional) define até qual data gerar transações. 
 }
 ```
 
-| Campo            | Tipo  | Restrições                                    |
-|------------------|-------|-----------------------------------------------|
-| categoria_id     | uuid  | Deve ser categoria de tipo `despesa`          |
-| valor_limite     | decimal | ≥ 0, obrigatório                           |
-| mes              | int   | 1–12, obrigatório                             |
-| ano              | int   | ≥ 2000, obrigatório                           |
-| alerta_percentual| int   | 1–100, padrão 80 (gatilho de alerta em %)    |
+Ou para um **Orçamento Geral (teto máximo de despesas do mês)**:
 
-> **Regra:** Um orçamento é único por (categoria, mês, ano). Tentar criar duplicado retorna **409 BUDGET_EXISTS**.
->
-> **Subcategorias:** O progresso inclui gastos de subcategorias da categoria vinculada ao orçamento.
+```json
+{
+  "nome": "Teto Geral de Gastos",
+  "valor_limite": "5000.00",
+  "mes": 8,
+  "ano": 2026,
+  "alerta_percentual": 80
+}
+```
+
+| Campo            | Tipo    | Restrições                                    |
+|------------------|---------|-----------------------------------------------|
+| `nome`           | string  | Opcional (até 100 caracteres). Se omitido para orçamento sem categoria, assume `"Orçamento Geral"`. Se omitido com categoria, assume o nome da categoria. |
+| `categoria_id`   | uuid    | **Opcional**. Se informado, deve ser categoria de tipo `despesa`. Se omitido (`null`), o orçamento monitora **todas as despesas do mês**. |
+| `valor_limite`   | decimal | ≥ 0, obrigatório                             |
+| `mes`            | int     | 1–12, obrigatório                             |
+| `ano`            | int     | ≥ 2000, obrigatório                           |
+| `alerta_percentual`| int   | 1–100, padrão 80 (gatilho de alerta em %)     |
+
+> **Regras de Negócio e Cálculo de Gastos:**
+> - **Com categoria:** Monitora as despesas da categoria indicada mais suas subcategorias no mês/ano.
+> - **Sem categoria (Geral):** Monitora a soma de **todas as despesas confirmadas** do usuário no mês/ano.
+> - **Unicidade:** Um orçamento por categoria é único por `(categoria, mês, ano)`. Um orçamento sem categoria é único por `(nome, mês, ano)`. Tentativas duplicadas retornam **409 BUDGET_EXISTS**.
 
 **Response 201:**
 
@@ -790,8 +807,13 @@ O parâmetro `data_limite` (opcional) define até qual data gerar transações. 
 {
   "id": "...",
   "user_id": "...",
+  "nome": "Supermercado Mensal",
   "categoria_id": "...",
+  "categoria_nome": "Alimentação",
   "valor_limite": "2000.00",
+  "valor_gasto": "0.00",
+  "percentual": 0.0,
+  "alerta": false,
   "mes": 8,
   "ano": 2026,
   "alerta_percentual": 80,

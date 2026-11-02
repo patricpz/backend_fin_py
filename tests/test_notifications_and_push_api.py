@@ -352,3 +352,44 @@ class TestNotificationsAPI:
         with patch.object(settings, "APP_ENV", "production"):
             res_prod = await client.post("/notifications/test", headers=headers)
             assert res_prod.status_code == 404
+
+
+    @pytest.mark.asyncio
+    async def test_notifications_api_v1_prefix_and_contract(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        user_id, headers = await _create_user(client, "v1-user")
+        service = NotificationService(db_session)
+        await service.update_preferences(user_id, {"daily_limit": 20})
+        notif = await service.processar_evento(
+            user_id=user_id,
+            event_type="tip",
+            data={"message": "Dica rota v1", "url": "/v1/teste"},
+            dedupe_key=f"v1_tip_{user_id}",
+        )
+        await db_session.commit()
+        notif_id = str(notif.id)
+
+        # 1. GET /api/v1/notifications?limit=20
+        res = await client.get("/api/v1/notifications?limit=20", headers=headers)
+        assert res.status_code == 200
+        data = res.json()
+        assert "items" in data
+        assert "next_cursor" in data
+        assert "unread_count" in data
+        assert data["unread_count"] == 1
+        assert len(data["items"]) == 1
+        assert data["items"][0]["id"] == notif_id
+
+        # 2. PATCH /api/v1/notifications/{id}/read
+        res_read = await client.patch(f"/api/v1/notifications/{notif_id}/read", headers=headers)
+        assert res_read.status_code == 204
+
+        # 3. GET /api/v1/notification-preferences
+        res_pref = await client.get("/api/v1/notification-preferences", headers=headers)
+        assert res_pref.status_code == 200
+        assert "daily_limit" in res_pref.json()
+
+        # 4. POST /api/v1/notifications/read-all
+        res_read_all = await client.post("/api/v1/notifications/read-all", headers=headers)
+        assert res_read_all.status_code == 204

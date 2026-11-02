@@ -47,3 +47,14 @@ class BudgetRepository(BaseRepository[Budget]):
             )
         )
         return result.scalar_one_or_none()
+
+    async def get_by_nome_periodo(self, user_id: UUID, nome: str, mes: int, ano: int) -> Optional[Budget]:
+        result = await self.db.execute(
+            select(Budget).options(selectinload(Budget.category)).where(
+                Budget.user_id == user_id,
+                Budget.nome == nome,
+                Budget.mes == mes,
+                Budget.ano == ano
+            )
+        )
+        return result.scalar_one_or_none()
