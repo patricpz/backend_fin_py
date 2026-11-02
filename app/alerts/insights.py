@@ -63,6 +63,13 @@ class TemplateProvider(InsightProvider):
             body = data.get("message", "Acompanhe seus limites de gastos para manter o orçamento equilibrado.")
             return title, body, payload
 
+        elif event_type == "welcome":
+            user_name = data.get("user_name", "Usuário")
+            title = "Bem-vindo de volta!"
+            body = f"Olá {user_name}, bom te ver por aqui. 👋"
+            payload.setdefault("url", "/dashboard")
+            return title, body, payload
+
         title = data.get("title", "Notificação Financeira")
         body = data.get("body", "Você tem uma nova notificação financeira.")
         return title, body, payload

@@ -1,5 +1,4 @@
-from __future__ import annotations
-
+from typing import Optional
 from uuid import UUID
 from datetime import date
 from decimal import Decimal
@@ -31,32 +30,38 @@ class BudgetService:
             raise BusinessRuleError("Orçamentos só podem ser criados para categorias de despesa", "BUDGET_INVALID_CATEGORY_TYPE")
         return category
 
-    async def _calculate_spent(self, user_id: UUID, categoria_id: UUID, mes: int, ano: int) -> Decimal:
+    async def _calculate_spent(self, user_id: UUID, categoria_id: Optional[UUID], mes: int, ano: int) -> Decimal:
         data_inicio = date(ano, mes, 1)
         if mes == 12:
             data_fim = date(ano + 1, 1, 1)
         else:
             data_fim = date(ano, mes + 1, 1)
 
-        subcategories = await self.cat_repo.get_by_user(user_id, tipo=None, ativo_only=None, limit=1000, offset=0)
-        sub_ids = [categoria_id] + [c.id for c in subcategories if c.categoria_pai_id == categoria_id]
+        if categoria_id:
+            subcategories = await self.cat_repo.get_by_user(user_id, tipo=None, ativo_only=None, limit=1000, offset=0)
+            sub_ids = [categoria_id] + [c.id for c in subcategories if c.categoria_pai_id == categoria_id]
 
-        valor_gasto = Decimal("0")
-        for sub_id in sub_ids:
-            gasto = await self.tx_repo.get_category_spending(user_id, sub_id, data_inicio, data_fim)
-            valor_gasto += gasto
-        return valor_gasto
+            valor_gasto = Decimal("0")
+            for sub_id in sub_ids:
+                gasto = await self.tx_repo.get_category_spending(user_id, sub_id, data_inicio, data_fim)
+                valor_gasto += gasto
+            return valor_gasto
+        else:
+            return await self.tx_repo.get_total_expense_spending(user_id, data_inicio, data_fim)
 
     async def _to_budget_response(self, budget: Budget) -> BudgetResponse:
         spent = await self._calculate_spent(budget.user_id, budget.categoria_id, budget.mes, budget.ano)
         percentual = float(spent / budget.valor_limite * 100) if budget.valor_limite > 0 else 0.0
         alerta = percentual >= budget.alerta_percentual
-        cat = await self.cat_repo.get_by_id(budget.categoria_id, budget.user_id)
-        cat_name = cat.nome if cat else ""
+        cat_name = None
+        if budget.categoria_id:
+            cat = await self.cat_repo.get_by_id(budget.categoria_id, budget.user_id)
+            cat_name = cat.nome if cat else ""
 
         return BudgetResponse(
             id=budget.id,
             user_id=budget.user_id,
+            nome=budget.nome,
             categoria_id=budget.categoria_id,
             categoria_nome=cat_name,
             valor_limite=budget.valor_limite,
@@ -71,14 +76,23 @@ class BudgetService:
         )
 
     async def create(self, user_id: UUID, data: BudgetCreate) -> BudgetResponse:
-        await self._validate_category(user_id, data.categoria_id)
-
-        existing = await self.repo.get_by_categoria_periodo(user_id, data.categoria_id, data.mes, data.ano)
-        if existing:
-            raise ConflictError("Já existe orçamento para esta categoria no período", "BUDGET_EXISTS")
+        if data.categoria_id:
+            await self._validate_category(user_id, data.categoria_id)
+            existing = await self.repo.get_by_categoria_periodo(user_id, data.categoria_id, data.mes, data.ano)
+            if existing:
+                raise ConflictError("Já existe orçamento para esta categoria no período", "BUDGET_EXISTS")
+            cat = await self.cat_repo.get_by_id(data.categoria_id, user_id)
+            nome = data.nome or (cat.nome if cat else None)
+        else:
+            nome = data.nome or "Orçamento Geral"
+            if data.nome:
+                existing = await self.repo.get_by_nome_periodo(user_id, data.nome, data.mes, data.ano)
+                if existing:
+                    raise ConflictError("Já existe orçamento com este nome no período", "BUDGET_EXISTS")
 
         budget = Budget(
             user_id=user_id,
+            nome=nome,
             categoria_id=data.categoria_id,
             valor_limite=data.valor_limite,
             mes=data.mes,
@@ -106,7 +120,14 @@ class BudgetService:
         budget = await self.repo.get_by_id(budget_id, user_id)
         if not budget:
             raise NotFoundError("Orçamento não encontrado", "BUDGET_NOT_FOUND")
+
         update_data = data.model_dump(exclude_unset=True)
+        if "categoria_id" in update_data and update_data["categoria_id"]:
+            await self._validate_category(user_id, update_data["categoria_id"])
+            existing = await self.repo.get_by_categoria_periodo(user_id, update_data["categoria_id"], budget.mes, budget.ano)
+            if existing and existing.id != budget.id:
+                raise ConflictError("Já existe orçamento para esta categoria no período", "BUDGET_EXISTS")
+
         for field, value in update_data.items():
             setattr(budget, field, value)
         await self.db.flush()
@@ -127,11 +148,14 @@ class BudgetService:
         spent = await self._calculate_spent(budget.user_id, budget.categoria_id, budget.mes, budget.ano)
         percentual = float(spent / budget.valor_limite * 100) if budget.valor_limite > 0 else 0.0
         alerta = percentual >= budget.alerta_percentual
-        cat = await self.cat_repo.get_by_id(budget.categoria_id, budget.user_id)
-        cat_name = cat.nome if cat else ""
+        cat_name = None
+        if budget.categoria_id:
+            cat = await self.cat_repo.get_by_id(budget.categoria_id, budget.user_id)
+            cat_name = cat.nome if cat else ""
 
         return BudgetProgress(
             budget_id=budget.id,
+            nome=budget.nome,
             categoria_id=budget.categoria_id,
             categoria_nome=cat_name,
             valor_limite=budget.valor_limite,

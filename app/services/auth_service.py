@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -8,6 +8,7 @@ from app.repositories.user_repository import UserRepository
 from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token
 from app.core.exceptions import UnauthorizedError, ConflictError
 from app.schemas.auth import UserRegister, UserLogin, TokenResponse, RefreshTokenRequest
+from app.services.notification_service import NotificationService
 import uuid
 
 
@@ -50,6 +51,15 @@ class AuthService:
         )
         self.db.add(rt)
         await self.db.flush()
+
+        # Disparar notificação de boas-vindas
+        notification_service = NotificationService(self.db)
+        await notification_service.processar_evento(
+            user_id=user.id,
+            event_type="welcome",
+            data={"user_name": user.nome or user.email.split("@")[0]},
+            dedupe_key=f"welcome-{user.id}-{int(datetime.now().timestamp())}",
+        )
 
         return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 

@@ -1,4 +1,5 @@
 import uuid
+from typing import Optional
 from sqlalchemy import String, Numeric, SmallInteger, ForeignKey, Index, CheckConstraint, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin, GUID
@@ -10,7 +11,8 @@ class Budget(Base, TimestampMixin):
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    categoria_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("categories.id", ondelete="RESTRICT"), nullable=False)
+    nome: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    categoria_id: Mapped[Optional[uuid.UUID]] = mapped_column(GUID, ForeignKey("categories.id", ondelete="RESTRICT"), nullable=True)
     valor_limite: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False)
     mes: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     ano: Mapped[int] = mapped_column(SmallInteger, nullable=False)

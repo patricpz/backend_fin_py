@@ -28,7 +28,7 @@ async def run_daily_checks() -> None:
         for user in users:
             try:
                 # 1. Verifica orçamentos ativos do mês
-                stmt_budgets = select(Budget).join(Category).where(
+                stmt_budgets = select(Budget).outerjoin(Category).where(
                     Budget.user_id == user.id,
                     Budget.mes == today.month,
                     Budget.ano == today.year,
@@ -36,24 +36,37 @@ async def run_daily_checks() -> None:
                 budgets = (await db.execute(stmt_budgets)).scalars().all()
 
                 for b in budgets:
-                    # Calcula gastos confirmados na categoria neste mês
                     data_inicio = date(today.year, today.month, 1)
-                    stmt_spent = select(func.coalesce(func.sum(Transaction.valor), 0)).where(
-                        Transaction.user_id == user.id,
-                        Transaction.categoria_id == b.categoria_id,
-                        Transaction.tipo == TransactionType.DESPESA,
-                        Transaction.status == TransactionStatus.CONFIRMADO,
-                        Transaction.data >= data_inicio,
-                        Transaction.data <= today,
-                    )
+                    if b.categoria_id:
+                        stmt_spent = select(func.coalesce(func.sum(Transaction.valor), 0)).where(
+                            Transaction.user_id == user.id,
+                            Transaction.categoria_id == b.categoria_id,
+                            Transaction.tipo == TransactionType.DESPESA,
+                            Transaction.status == TransactionStatus.CONFIRMADO,
+                            Transaction.data >= data_inicio,
+                            Transaction.data <= today,
+                        )
+                        cat_name = (b.category.nome if b.category else None) or b.nome or "Categoria"
+                        dedupe_prefix = f"overspending_{b.categoria_id}"
+                    else:
+                        stmt_spent = select(func.coalesce(func.sum(Transaction.valor), 0)).where(
+                            Transaction.user_id == user.id,
+                            Transaction.tipo == TransactionType.DESPESA,
+                            Transaction.status == TransactionStatus.CONFIRMADO,
+                            Transaction.data >= data_inicio,
+                            Transaction.data <= today,
+                        )
+                        cat_name = b.nome or "Orçamento Geral"
+                        dedupe_prefix = f"overspending_global_{b.id}"
+
                     spent = (await db.execute(stmt_spent)).scalar_one()
                     alert_data = check_overspending(
                         spent=Decimal(str(spent)),
                         budget=Decimal(str(b.valor_limite)),
-                        category_name=b.category.nome if b.category else "Categoria",
+                        category_name=cat_name,
                     )
                     if alert_data:
-                        dedupe_key = f"overspending_{b.categoria_id}_{today.month}_{today.year}_{alert_data['level']}"
+                        dedupe_key = f"{dedupe_prefix}_{today.month}_{today.year}_{alert_data['level']}"
                         await service.processar_evento(
                             user_id=user.id,
                             event_type="overspending",

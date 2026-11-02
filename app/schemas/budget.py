@@ -8,7 +8,8 @@ from app.models.enums import BudgetAlertPercent
 
 class BudgetBase(BaseModel):
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
-    categoria_id: UUID = Field(..., validation_alias=AliasChoices("categoria_id", "category_id", "categoryId"))
+    nome: Optional[str] = Field(None, validation_alias=AliasChoices("nome", "name"), max_length=100)
+    categoria_id: Optional[UUID] = Field(None, validation_alias=AliasChoices("categoria_id", "category_id", "categoryId"))
     valor_limite: Decimal = Field(..., validation_alias=AliasChoices("valor_limite", "limit_amount", "limitAmount"), ge=0, decimal_places=2)
     mes: int = Field(..., validation_alias=AliasChoices("mes", "month"), ge=1, le=12)
     ano: int = Field(..., validation_alias=AliasChoices("ano", "year"), ge=2000)
@@ -26,6 +27,8 @@ class BudgetCreate(BudgetBase):
 
 class BudgetUpdate(BaseModel):
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
+    nome: Optional[str] = Field(None, validation_alias=AliasChoices("nome", "name"), max_length=100)
+    categoria_id: Optional[UUID] = Field(None, validation_alias=AliasChoices("categoria_id", "category_id", "categoryId"))
     valor_limite: Optional[Decimal] = Field(None, validation_alias=AliasChoices("valor_limite", "limit_amount", "limitAmount"), ge=0, decimal_places=2)
     alerta_percentual: Optional[int] = Field(
         None,
@@ -39,7 +42,8 @@ class BudgetResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True, extra="ignore", populate_by_name=True)
     id: UUID
     user_id: UUID
-    categoria_id: UUID
+    nome: Optional[str] = None
+    categoria_id: Optional[UUID] = None
     categoria_nome: Optional[str] = None
     valor_limite: Decimal
     valor_gasto: Optional[Decimal] = None
@@ -53,12 +57,17 @@ class BudgetResponse(BaseModel):
 
     @computed_field
     @property
+    def name(self) -> str:
+        return self.nome or self.categoria_nome or ""
+
+    @computed_field
+    @property
     def userId(self) -> UUID:
         return self.user_id
 
     @computed_field
     @property
-    def categoryId(self) -> UUID:
+    def categoryId(self) -> Optional[UUID]:
         return self.categoria_id
 
     @computed_field
@@ -115,8 +124,9 @@ class BudgetResponse(BaseModel):
 class BudgetProgress(BaseModel):
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
     budget_id: UUID
-    categoria_id: UUID
-    categoria_nome: str
+    nome: Optional[str] = None
+    categoria_id: Optional[UUID] = None
+    categoria_nome: Optional[str] = None
     valor_limite: Decimal
     valor_gasto: Decimal
     percentual: float
@@ -126,18 +136,23 @@ class BudgetProgress(BaseModel):
 
     @computed_field
     @property
+    def name(self) -> str:
+        return self.nome or self.categoria_nome or ""
+
+    @computed_field
+    @property
     def budgetId(self) -> UUID:
         return self.budget_id
 
     @computed_field
     @property
-    def categoryId(self) -> UUID:
+    def categoryId(self) -> Optional[UUID]:
         return self.categoria_id
 
     @computed_field
     @property
     def categoryName(self) -> str:
-        return self.categoria_nome
+        return self.categoria_nome or ""
 
     @computed_field
     @property

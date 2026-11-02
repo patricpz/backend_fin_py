@@ -6,7 +6,7 @@ from uuid import UUID
 from datetime import datetime
 
 
-VALID_NOTIFICATION_TYPES = ["overspending", "spending_spike", "installment_due", "tip", "summary"]
+VALID_NOTIFICATION_TYPES = ["overspending", "spending_spike", "installment_due", "tip", "summary", "welcome"]
 VALID_ACTIONS = ["opened", "dismissed", "helpful", "not_helpful", "executed"]
 
 

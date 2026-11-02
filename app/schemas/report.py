@@ -6,7 +6,7 @@ from decimal import Decimal
 
 
 class MonthlySummary(BaseModel):
-    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+    model_config = ConfigDict(extra="ignore", populate_by_name=True, arbitrary_types_allowed=True)
     mes: int
     ano: int
     total_receitas: Decimal
@@ -25,6 +25,7 @@ class MonthlySummary(BaseModel):
     def year(self) -> int:
         return self.ano
 
+    @computed_field
     @computed_field
     @property
     def totalIncome(self) -> Decimal:
@@ -52,7 +53,7 @@ class MonthlySummary(BaseModel):
 
 
 class CategorySpending(BaseModel):
-    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+    model_config = ConfigDict(extra="ignore", populate_by_name=True, arbitrary_types_allowed=True)
     categoria_id: UUID
     categoria_nome: str
     cor: str
@@ -98,7 +99,7 @@ class CategorySpending(BaseModel):
 
 
 class CategorySpendingReport(BaseModel):
-    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+    model_config = ConfigDict(extra="ignore", populate_by_name=True, arbitrary_types_allowed=True)
     mes: int
     ano: int
     total_despesas: Decimal
@@ -126,23 +127,23 @@ class CategorySpendingReport(BaseModel):
 
 
 class BalanceEvolutionPoint(BaseModel):
-    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+    model_config = ConfigDict(extra="ignore", populate_by_name=True, arbitrary_types_allowed=True)
     data: date
     saldo: Decimal
-
-    @computed_field
-    @property
-    def date(self) -> dt_date:
-        return self.data
 
     @computed_field
     @property
     def balance(self) -> Decimal:
         return self.saldo
 
+    @computed_field
+    @property
+    def date(self) -> dt_date:
+        return self.data
+
 
 class BalanceEvolutionReport(BaseModel):
-    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+    model_config = ConfigDict(extra="ignore", populate_by_name=True, arbitrary_types_allowed=True)
     conta_id: UUID
     conta_nome: str
     pontos: List[BalanceEvolutionPoint]
@@ -164,7 +165,7 @@ class BalanceEvolutionReport(BaseModel):
 
 
 class MonthlyBalanceEvolution(BaseModel):
-    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+    model_config = ConfigDict(extra="ignore", populate_by_name=True, arbitrary_types_allowed=True)
     mes: int
     ano: int
     total_receitas: Decimal
@@ -182,6 +183,7 @@ class MonthlyBalanceEvolution(BaseModel):
         return self.ano
 
     @computed_field
+    @computed_field
     @property
     def totalIncome(self) -> Decimal:
         return self.total_receitas
@@ -198,7 +200,7 @@ class MonthlyBalanceEvolution(BaseModel):
 
 
 class BudgetVsActual(BaseModel):
-    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+    model_config = ConfigDict(extra="ignore", populate_by_name=True, arbitrary_types_allowed=True)
     categoria_id: UUID
     categoria_nome: str
     orcado: Decimal
@@ -244,7 +246,7 @@ class BudgetVsActual(BaseModel):
 
 
 class BudgetVsActualReport(BaseModel):
-    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+    model_config = ConfigDict(extra="ignore", populate_by_name=True, arbitrary_types_allowed=True)
     mes: int
     ano: int
     orcamentos: List[BudgetVsActual]
